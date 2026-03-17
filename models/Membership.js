@@ -30,6 +30,7 @@ const membershipSchema = new mongoose.Schema({
     enum: ["pending", "completed"],
     default: "pending",
   },
+  razorpayOrderId: { type: String, default: null },
   paymentId: { type: String, default: null },
   createdAt: { type: Date, default: Date.now },
 });

@@ -10,11 +10,32 @@ import {
 
 const router = express.Router();
 
+const normalizeLinkedinUrl = (value) => {
+  if (!value || typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+
+  try {
+    const parsed = new URL(withProtocol);
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes("linkedin.com")) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+};
+
 // Razorpay instance
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
+
+const isTestRazorpayKey = (key) => typeof key === "string" && key.startsWith("rzp_test_");
 
 // Helper function for validation errors
 const handleValidationErrors = (req, res) => {
@@ -28,11 +49,35 @@ const handleValidationErrors = (req, res) => {
 router.post(
   "/apply",
   [
-    body("fullName").isString().withMessage("Full name is required"),
+    body("fullName")
+      .isString()
+      .withMessage("Full name is required")
+      .bail()
+      .trim()
+      .notEmpty()
+      .withMessage("Full name is required"),
     body("email").isEmail().withMessage("Valid email is required"),
-    body("phone").isString().withMessage("Phone number is required"),
-    body("address").isString().withMessage("Address is required"),
-    body("organization").isString().withMessage("Organization is required"),
+    body("phone")
+      .isString()
+      .withMessage("Phone number is required")
+      .bail()
+      .trim()
+      .notEmpty()
+      .withMessage("Phone number is required"),
+    body("address")
+      .isString()
+      .withMessage("Address is required")
+      .bail()
+      .trim()
+      .notEmpty()
+      .withMessage("Address is required"),
+    body("organization")
+      .isString()
+      .withMessage("Organization is required")
+      .bail()
+      .trim()
+      .notEmpty()
+      .withMessage("Organization is required"),
     body("membershipType")
       .isIn([
         "collaborator",
@@ -45,13 +90,17 @@ router.post(
       ])
       .withMessage("Invalid membership type"),
     body("occupation")
-      .optional()
       .isString()
       .withMessage("Occupation must be a string"),
     body("linkedinProfile")
-      .optional()
-      .isURL()
-      .withMessage("LinkedIn profile must be a valid URL"),
+      .optional({ checkFalsy: true })
+      .custom((value) => {
+        const normalized = normalizeLinkedinUrl(value);
+        if (!normalized) {
+          throw new Error("LinkedIn profile must be a valid LinkedIn URL");
+        }
+        return true;
+      }),
     body("interests")
       .optional()
       .isArray()
@@ -61,6 +110,16 @@ router.post(
     if (handleValidationErrors(req, res)) return;
 
     try {
+      if (
+        process.env.NODE_ENV === "production" &&
+        isTestRazorpayKey(process.env.RAZORPAY_KEY_ID)
+      ) {
+        return res.status(500).json({
+          message:
+            "Razorpay is configured with test keys in production. Please switch to live keys.",
+        });
+      }
+
       const {
         fullName,
         email,
@@ -72,6 +131,8 @@ router.post(
         linkedinProfile,
         interests,
       } = req.body;
+
+      const normalizedLinkedin = normalizeLinkedinUrl(linkedinProfile);
 
       // Determine if payment is required
       const isPaidMembership = membershipType !== "women-empowerment";
@@ -85,7 +146,7 @@ router.post(
         organization,
         membershipType,
         occupation,
-        linkedinProfile,
+        linkedinProfile: normalizedLinkedin,
         interests,
         paymentStatus: isPaidMembership ? "pending" : "completed",
       });
@@ -128,19 +189,39 @@ router.post(
         receipt: newMembership._id.toString(),
       });
 
+      newMembership.razorpayOrderId = order.id;
+      await newMembership.save();
+
       res.status(201).json({
         message: "Membership application submitted. Proceed to payment.",
         orderId: order.id,
         amount,
         currency: "INR",
+        keyId: process.env.RAZORPAY_KEY_ID,
       });
     } catch (error) {
       console.error("Error creating membership application:", error);
       console.error("Error stack:", error.stack);
+
+      if (error?.name === "ValidationError") {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: Object.values(error.errors).map((e) => ({
+            field: e.path,
+            msg: e.message,
+          })),
+        });
+      }
+
+      if (error?.statusCode && error?.error?.description) {
+        return res.status(502).json({
+          message: error.error.description,
+          code: error.error.code,
+        });
+      }
+
       res.status(500).json({
-        message: "An error occurred. Please try again.",
-        error:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
+        message: error?.message || "An error occurred. Please try again.",
       });
     }
   }
@@ -172,7 +253,7 @@ router.post(
 
       // Update the membership payment status
       const membership = await Membership.findOneAndUpdate(
-        { _id: orderId },
+        { razorpayOrderId: orderId },
         { paymentStatus: "completed", paymentId },
         { new: true }
       );
