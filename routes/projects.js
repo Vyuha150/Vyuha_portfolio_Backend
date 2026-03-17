@@ -38,7 +38,9 @@ router.post(
     body("title").isString().withMessage("Project title is required"),
     body("description").isString().withMessage("Description is required"),
     body("deadline").isISO8601().withMessage("Valid deadline is required"),
-    body("difficulty").isString().withMessage("Difficulty is required"),
+    body("difficulty")
+      .isIn(["Easy", "Medium", "Hard"])
+      .withMessage("Difficulty must be Easy, Medium, or Hard"),
     body("teamSize").isString().withMessage("Team size is required"),
     body("skills").isString().withMessage("Skills are required"),
     body("goals").isString().withMessage("Goals are required"),
@@ -82,6 +84,14 @@ router.post(
       res.status(201).json(newProject);
     } catch (error) {
       console.error("Error creating project:", error);
+
+      if (error?.name === "ValidationError") {
+        return res.status(400).json({
+          message: "Invalid project data",
+          errors: Object.values(error.errors).map((e) => e.message),
+        });
+      }
+
       res.status(500).json({ message: "Error creating project" });
     }
   }
@@ -124,7 +134,13 @@ router.put(
   authMiddleware,
   authorizeRoles("admin", "sub-admin"),
   upload.single("image"),
-  [param("id").isMongoId().withMessage("Invalid project ID")],
+  [
+    param("id").isMongoId().withMessage("Invalid project ID"),
+    body("difficulty")
+      .optional()
+      .isIn(["Easy", "Medium", "Hard"])
+      .withMessage("Difficulty must be Easy, Medium, or Hard"),
+  ],
   async (req, res) => {
     if (handleValidationErrors(req, res)) return;
 
@@ -158,7 +174,7 @@ router.put(
       const updatedProject = await Project.findByIdAndUpdate(
         req.params.id,
         updatedData,
-        { new: true }
+        { new: true, runValidators: true }
       );
 
       if (!updatedProject) {

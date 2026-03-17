@@ -52,6 +52,19 @@ router.post(
     try {
       const eventData = { ...req.body };
 
+      if (typeof eventData.isRecorded === "string") {
+        eventData.isRecorded =
+          eventData.isRecorded === "true" || eventData.isRecorded === "on";
+      }
+      if (typeof eventData.inCollege === "string") {
+        eventData.inCollege =
+          eventData.inCollege === "true" || eventData.inCollege === "on";
+      }
+      if (typeof eventData.isVcc === "string") {
+        eventData.isVcc =
+          eventData.isVcc === "true" || eventData.isVcc === "on";
+      }
+
       // If event-lead creates an in-college event, use their college code
       if (req.user.role === "event-lead") {
         if (eventData.inCollege === "true" || eventData.inCollege === true) {
@@ -100,6 +113,17 @@ router.post(
       res.status(201).json(newEvent);
     } catch (error) {
       console.error("Error creating event:", error);
+
+      if (error?.name === "ValidationError") {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: Object.values(error.errors).map((e) => ({
+            field: e.path,
+            msg: e.message,
+          })),
+        });
+      }
+
       res.status(500).json({ message: "Error creating event" });
     }
   }
@@ -110,6 +134,7 @@ router.get("/", authMiddleware, async (req, res) => {
   try {
     let query = {};
     const user = req.user; // Comes from authMiddleware
+    const isSummary = req.query.summary === "true";
 
     // Base filter: exclude VCC events for non-VCC members and non-event-leads
     const baseVccFilter = (user.role === "vcc-member" || user.role === "event-lead") ? {} : { isVcc: { $ne: true } };
@@ -166,8 +191,15 @@ router.get("/", authMiddleware, async (req, res) => {
       query = baseVccFilter;
     }
 
-    const events = await Event.find(query)
-      .populate('college', 'name');
+    let eventsQuery = Event.find(query).populate("college", "name");
+
+    if (isSummary) {
+      eventsQuery = eventsQuery.select(
+        "name description date time location organizer organizerBio platformLink fees materials isRecorded category mode targetAudience inCollege isVcc college"
+      );
+    }
+
+    const events = await eventsQuery;
     res.status(200).json(events);
   } catch (error) {
     console.error("Error fetching events:", error);

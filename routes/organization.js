@@ -110,7 +110,10 @@ router.post(
 
       await newEntry.save();
 
-      res.status(201).json({ message: "Registration successful!" });
+      res.status(201).json({
+        message: "Registration successful!",
+        organization: newEntry,
+      });
     } catch (error) {
       console.error("Error registering:", error);
       res.status(500).json({ message: "An error occurred. Please try again." });
@@ -162,12 +165,11 @@ router.put(
   upload.single("logo"),
   [
     param("id").isMongoId().withMessage("Invalid organization ID"),
-    body("organizationName").optional().isString(),
+    body("name").optional().isString(),
     body("collegeUniversity").optional().isString(),
     body("organizationType").optional().isString(),
-    body("activeMembers").optional().isNumeric(),
+    body("activeMembers").optional().isString(),
     body("pastEvents").optional().isString(),
-    body("contactName").optional().isString(),
     body("contactEmail").optional().isEmail(),
     body("contactPhone").optional().isString(),
   ],
