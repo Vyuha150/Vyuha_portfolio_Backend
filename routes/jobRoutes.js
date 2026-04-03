@@ -1,5 +1,8 @@
 import express from "express";
 import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 import { body, param, validationResult } from "express-validator";
 import Job from "../models/Job.js";
 import {
@@ -7,12 +10,21 @@ import {
   authorizeRoles,
 } from "../middleware/authMiddleware.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, "..", "uploads");
+
+// Ensure uploads directory exists
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const router = express.Router();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Save files to the "uploads/jobs" directory
+    cb(null, uploadsDir); // Save files to the "uploads/jobs" directory
   },
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`); // Use a unique filename

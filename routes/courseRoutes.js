@@ -2,17 +2,29 @@ import express from "express";
 import Course from "../models/Course.js";
 import { body, validationResult, param } from "express-validator";
 import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 import {
   authMiddleware,
   authorizeRoles,
 } from "../middleware/authMiddleware.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, "..", "uploads", "course-photos");
+
+// Ensure uploads directory exists
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 const router = express.Router();
 
 // Multer storage config for course photos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/course-photos/");
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, ""));

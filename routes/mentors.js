@@ -9,12 +9,24 @@ import rateLimit from "express-rate-limit";
 import Mentor from "../models/Mentor.js";
 import multer from "multer";
 import Review from "../models/Review.js";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, "..", "uploads");
+
+// Ensure uploads directory exists
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 const router = Router();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Save files to the "uploads" directory
+    cb(null, uploadsDir); // Save files to the "uploads" directory
   },
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`);
